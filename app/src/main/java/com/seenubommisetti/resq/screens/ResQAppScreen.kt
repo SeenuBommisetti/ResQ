@@ -62,9 +62,6 @@ fun ResQAppScreen(modifier: Modifier = Modifier) {
     var storedContacts by remember { mutableStateOf(loadContacts(context)) }
 
 
-    var isServiceRunning by remember { mutableStateOf(SosService.isRunning) }
-
-
     val permissionsToRequest = mutableListOf(
         Manifest.permission.SEND_SMS,
         Manifest.permission.ACCESS_FINE_LOCATION,
@@ -80,9 +77,7 @@ fun ResQAppScreen(modifier: Modifier = Modifier) {
     ) { permissions ->
         val allGranted = permissions.entries.all { it.value }
         if (allGranted) {
-
-            toggleSosService(context, !isServiceRunning)
-            isServiceRunning = !isServiceRunning
+            toggleSosService(context, !SosService.isRunning)
         } else {
             Toast.makeText(context, "Permissions required for SOS", Toast.LENGTH_SHORT).show()
         }
@@ -100,16 +95,14 @@ fun ResQAppScreen(modifier: Modifier = Modifier) {
 
         Button(
             onClick = {
-                if (isServiceRunning) {
+                if (SosService.isRunning) {
                     toggleSosService(context, false)
-                    isServiceRunning = false
                 } else {
                     if (storedContacts.isEmpty()) {
                         Toast.makeText(context, "Add contacts first!", Toast.LENGTH_SHORT).show()
                     } else {
                         if (hasPermissions(context, permissionsToRequest)) {
                             toggleSosService(context, true)
-                            isServiceRunning = true
                         } else {
                             permissionLauncher.launch(permissionsToRequest)
                         }
@@ -119,18 +112,18 @@ fun ResQAppScreen(modifier: Modifier = Modifier) {
             modifier = Modifier.size(200.dp),
             shape = CircleShape,
             colors = ButtonDefaults.buttonColors(
-                containerColor = if (isServiceRunning) Color.Gray else Color.Red
+                containerColor = if (SosService.isRunning) Color.Gray else Color.Red
             )
         ) {
             Text(
-                text = if (isServiceRunning) "STOP" else "SOS",
+                text = if (SosService.isRunning) "STOP" else "SOS",
                 fontSize = 32.sp,
                 fontWeight = FontWeight.Bold
             )
         }
 
         Spacer(modifier = Modifier.height(10.dp))
-        Text(if (isServiceRunning) "Sending location every 10 seconds..." else "Tap to start sharing")
+        Text(if (SosService.isRunning) "Sending location every 10 seconds..." else "Tap to start sharing")
 
         HorizontalDivider(modifier = Modifier.padding(vertical = 20.dp))
 

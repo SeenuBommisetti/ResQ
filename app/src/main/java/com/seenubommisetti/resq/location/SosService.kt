@@ -12,6 +12,10 @@ import android.os.Build
 import android.os.IBinder
 import android.telephony.SmsManager
 import android.util.Log
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.core.app.NotificationCompat
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
@@ -36,7 +40,7 @@ class SosService : Service() {
         const val ACTION_START = "ACTION_START"
         const val ACTION_STOP = "ACTION_STOP"
         const val CHANNEL_ID = "sos_location_channel"
-        var isRunning = false
+        var isRunning by mutableStateOf(false)
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -105,7 +109,7 @@ class SosService : Service() {
     private fun sendSosMessages(location: Location) {
         val prefs = getSharedPreferences("sos_prefs", Context.MODE_PRIVATE)
         val contacts = prefs.getStringSet("contacts", emptySet()) ?: emptySet()
-        val mapLink = "https://maps.google.com/?q=${location.latitude},${location.longitude}"
+        val mapLink = "https://www.google.com/maps/search/?api=1&query=${location.latitude},${location.longitude}"
         val message = "SOS! I need help. My current location is: $mapLink. Sent automatically via ResQ App."
 
         val smsManager = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
