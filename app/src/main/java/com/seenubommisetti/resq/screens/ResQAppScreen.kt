@@ -1,10 +1,13 @@
 package com.seenubommisetti.resq.screens
 
 import android.Manifest
+import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
+import android.provider.ContactsContract
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -20,10 +23,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -32,7 +35,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -44,7 +46,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -53,12 +54,14 @@ import androidx.core.content.edit
 import com.seenubommisetti.resq.location.SosService
 import com.seenubommisetti.resq.ui.theme.ResQTheme
 
+
+data class ContactModel(val name: String, val number: String)
+
 @Composable
 fun ResQAppScreen(modifier: Modifier = Modifier) {
 
     val context = LocalContext.current
 
-    var contactNumber by remember { mutableStateOf("") }
     var storedContacts by remember { mutableStateOf(loadContacts(context)) }
 
 
@@ -80,6 +83,36 @@ fun ResQAppScreen(modifier: Modifier = Modifier) {
             toggleSosService(context, !SosService.isRunning)
         } else {
             Toast.makeText(context, "Permissions required for SOS", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+
+    val contactPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val contactUri: Uri? = result.data?.data
+            if (contactUri != null) {
+                val contact = retrieveContactDetails(context, contactUri)
+                if (contact != null) {
+                    val cleanedNumber = contact.number.filter { it.isDigit() }.takeLast(10)
+
+                    if (cleanedNumber.length == 10) {
+                        val newContact = contact.copy(number = cleanedNumber)
+
+                        if (storedContacts.none { it.number == newContact.number }) {
+                            val newList = storedContacts + newContact
+                            saveContacts(context, newList)
+                            storedContacts = newList
+                            Toast.makeText(context, "Added ${newContact.name}", Toast.LENGTH_SHORT).show()
+                        } else {
+                            Toast.makeText(context, "Contact already added", Toast.LENGTH_SHORT).show()
+                        }
+                    } else {
+                        Toast.makeText(context, "Invalid number format", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
         }
     }
 
@@ -130,34 +163,24 @@ fun ResQAppScreen(modifier: Modifier = Modifier) {
 
         Text("Trusted Contacts", fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
 
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            OutlinedTextField(
-                value = contactNumber,
-                onValueChange = { contactNumber = it },
-                label = { Text("Phone Number") },
-                modifier = Modifier.weight(1f),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Button(onClick = {
-                if (contactNumber.isNotBlank() && contactNumber.length == 10 && contactNumber[0] in '6'..'9') {
-                    val newSet = storedContacts + contactNumber
-                    saveContacts(context, newSet)
-                    storedContacts = newSet
-                    contactNumber = ""
-                } else {
-                    Toast.makeText(context, "Invalid phone number", Toast.LENGTH_SHORT).show()
+
+        Spacer(modifier = Modifier.height(10.dp))
+        Button(
+            onClick = {
+                val intent = Intent(Intent.ACTION_PICK).apply {
+                    type = ContactsContract.CommonDataKinds.Phone.CONTENT_TYPE
                 }
-            }) {
-                Text("Add")
-            }
+                contactPickerLauncher.launch(intent)
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Icon(Icons.Default.Phone, contentDescription = null)
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("Pick from Contacts")
         }
 
         LazyColumn(modifier = Modifier.fillMaxWidth().padding(top = 16.dp)) {
-            items(storedContacts.toList()) { number ->
+            items(storedContacts) { contact ->
                 Card(
                     modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
@@ -168,11 +191,24 @@ fun ResQAppScreen(modifier: Modifier = Modifier) {
                     ) {
                         Icon(Icons.Default.Person, contentDescription = null)
                         Spacer(modifier = Modifier.width(16.dp))
-                        Text(number, modifier = Modifier.weight(1f))
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = contact.name,
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = contact.number,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color.Gray
+                            )
+                        }
+
                         IconButton(onClick = {
-                            val newSet = storedContacts - number
-                            saveContacts(context, newSet)
-                            storedContacts = newSet
+                            val newList = storedContacts - contact
+                            saveContacts(context, newList)
+                            storedContacts = newList
                         }) {
                             Icon(Icons.Default.Delete, contentDescription = "Delete")
                         }
@@ -180,6 +216,7 @@ fun ResQAppScreen(modifier: Modifier = Modifier) {
                 }
             }
         }
+
     }
 }
 
@@ -207,16 +244,50 @@ fun toggleSosService(context: Context, shouldStart: Boolean) {
     }
 }
 
-fun saveContacts(context: Context, contacts: Set<String>) {
+
+fun retrieveContactDetails(context: Context, contactUri: Uri): ContactModel? {
+    val projection = arrayOf(
+        ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+        ContactsContract.CommonDataKinds.Phone.NUMBER
+    )
+    val cursor = context.contentResolver.query(contactUri, projection, null, null, null)
+
+    cursor?.use {
+        if (it.moveToFirst()) {
+            val nameIndex = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
+            val numberIndex = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
+
+            val name = if (nameIndex >= 0) it.getString(nameIndex) else "Unknown"
+            val number = if (numberIndex >= 0) it.getString(numberIndex) else ""
+
+            if (number.isNotBlank()) {
+                return ContactModel(name, number)
+            }
+        }
+    }
+    return null
+}
+
+fun saveContacts(context: Context, contacts: List<ContactModel>) {
+    val set = contacts.map { "${it.name}|${it.number}" }.toSet()
     context.getSharedPreferences("sos_prefs", Context.MODE_PRIVATE)
         .edit {
-            putStringSet("contacts", contacts)
+            putStringSet("contacts", set)
         }
 }
 
-fun loadContacts(context: Context): Set<String> {
-    return context.getSharedPreferences("sos_prefs", Context.MODE_PRIVATE)
+fun loadContacts(context: Context): List<ContactModel> {
+    val set = context.getSharedPreferences("sos_prefs", Context.MODE_PRIVATE)
         .getStringSet("contacts", emptySet()) ?: emptySet()
+
+    return set.mapNotNull { entry ->
+        val parts = entry.split("|")
+        if (parts.size == 2) {
+            ContactModel(parts[0], parts[1])
+        } else {
+            null
+        }
+    }
 }
 
 @Preview(showBackground = true)

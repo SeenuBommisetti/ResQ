@@ -14,7 +14,6 @@ import android.telephony.SmsManager
 import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.core.app.NotificationCompat
 import com.google.android.gms.location.LocationServices
@@ -119,12 +118,16 @@ class SosService : Service() {
             SmsManager.getDefault()
         }
 
-        for (number in contacts) {
-            try {
-                smsManager.sendTextMessage(number, null, message, null, null)
-                Log.d("SOS", "SMS sent to $number")
-            } catch (e: Exception) {
-                Log.e("SOS", "Failed to send SMS to $number: ${e.message}")
+        for (contact in contacts) {
+            val parts = contact.split("|")
+            if (parts.size == 2) {
+                val number = parts[1]
+                try {
+                    smsManager.sendTextMessage(number, null, message, null, null)
+                    Log.d("SOS", "SMS sent to $number")
+                } catch (e: Exception) {
+                    Log.e("SOS", "Failed to send SMS to $number: ${e.message}")
+                }
             }
         }
     }
