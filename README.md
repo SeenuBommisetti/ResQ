@@ -47,4 +47,4 @@ The app requests the following runtime permissions:
 
 ---
 
-**Developed by [Seenu Bommisetti](linkedin.com/in/seenu-bommisetti)**
+**Developed by [Seenu Bommisetti](github.com/SeenuBommisetti)**
