@@ -37,10 +37,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -50,30 +49,31 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
-import androidx.core.content.edit
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import com.seenubommisetti.resq.data.model.ContactModel
 import com.seenubommisetti.resq.location.SosService
 import com.seenubommisetti.resq.ui.theme.ResQTheme
 
-
-data class ContactModel(val name: String, val number: String)
-
 @Composable
-fun ResQAppScreen(modifier: Modifier = Modifier) {
-
+fun ResQAppScreen(
+    modifier: Modifier = Modifier,
+    viewModel: SosViewModel = hiltViewModel()
+) {
     val context = LocalContext.current
 
-    var storedContacts by remember { mutableStateOf(loadContacts(context)) }
+    val contacts by viewModel.contacts.collectAsState()
 
-
-    val permissionsToRequest = mutableListOf(
-        Manifest.permission.SEND_SMS,
-        Manifest.permission.ACCESS_FINE_LOCATION,
-        Manifest.permission.ACCESS_COARSE_LOCATION
-    ).apply {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            add(Manifest.permission.POST_NOTIFICATIONS)
-        }
-    }.toTypedArray()
+    val permissionsToRequest = remember {
+        mutableListOf(
+            Manifest.permission.SEND_SMS,
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.ACCESS_COARSE_LOCATION
+        ).apply {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                add(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }.toTypedArray()
+    }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -86,7 +86,6 @@ fun ResQAppScreen(modifier: Modifier = Modifier) {
         }
     }
 
-
     val contactPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -95,22 +94,8 @@ fun ResQAppScreen(modifier: Modifier = Modifier) {
             if (contactUri != null) {
                 val contact = retrieveContactDetails(context, contactUri)
                 if (contact != null) {
-                    val cleanedNumber = contact.number.filter { it.isDigit() }.takeLast(10)
-
-                    if (cleanedNumber.length == 10) {
-                        val newContact = contact.copy(number = cleanedNumber)
-
-                        if (storedContacts.none { it.number == newContact.number }) {
-                            val newList = storedContacts + newContact
-                            saveContacts(context, newList)
-                            storedContacts = newList
-                            Toast.makeText(context, "Added ${newContact.name}", Toast.LENGTH_SHORT).show()
-                        } else {
-                            Toast.makeText(context, "Contact already added", Toast.LENGTH_SHORT).show()
-                        }
-                    } else {
-                        Toast.makeText(context, "Invalid number format", Toast.LENGTH_SHORT).show()
-                    }
+                    viewModel.addContact(contact.name, contact.number)
+                    Toast.makeText(context, "Added ${contact.name}", Toast.LENGTH_SHORT).show()
                 }
             }
         }
@@ -125,13 +110,12 @@ fun ResQAppScreen(modifier: Modifier = Modifier) {
         Text("SOS EMERGENCY", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color.Red)
         Spacer(modifier = Modifier.height(20.dp))
 
-
         Button(
             onClick = {
                 if (SosService.isRunning) {
                     toggleSosService(context, false)
                 } else {
-                    if (storedContacts.isEmpty()) {
+                    if (contacts.isEmpty()) {
                         Toast.makeText(context, "Add contacts first!", Toast.LENGTH_SHORT).show()
                     } else {
                         if (hasPermissions(context, permissionsToRequest)) {
@@ -160,9 +144,7 @@ fun ResQAppScreen(modifier: Modifier = Modifier) {
 
         HorizontalDivider(modifier = Modifier.padding(vertical = 20.dp))
 
-
         Text("Trusted Contacts", fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
-
 
         Spacer(modifier = Modifier.height(10.dp))
         Button(
@@ -180,43 +162,46 @@ fun ResQAppScreen(modifier: Modifier = Modifier) {
         }
 
         LazyColumn(modifier = Modifier.fillMaxWidth().padding(top = 16.dp)) {
-            items(storedContacts) { contact ->
-                Card(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(Icons.Default.Person, contentDescription = null)
-                        Spacer(modifier = Modifier.width(16.dp))
-
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = contact.name,
-                                style = MaterialTheme.typography.bodyLarge,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = contact.number,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Color.Gray
-                            )
-                        }
-
-                        IconButton(onClick = {
-                            val newList = storedContacts - contact
-                            saveContacts(context, newList)
-                            storedContacts = newList
-                        }) {
-                            Icon(Icons.Default.Delete, contentDescription = "Delete")
-                        }
-                    }
-                }
+            items(contacts) { contact ->
+                ContactItem(
+                    contact = contact,
+                    onDelete = { viewModel.removeContact(contact) } // <--- ACTION TO VIEWMODEL
+                )
             }
         }
+    }
+}
 
+@Composable
+fun ContactItem(contact: ContactModel, onDelete: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Default.Person, contentDescription = null)
+            Spacer(modifier = Modifier.width(16.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = contact.name,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = contact.number,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.Gray
+                )
+            }
+
+            IconButton(onClick = onDelete) {
+                Icon(Icons.Default.Delete, contentDescription = "Delete")
+            }
+        }
     }
 }
 
@@ -244,7 +229,6 @@ fun toggleSosService(context: Context, shouldStart: Boolean) {
     }
 }
 
-
 fun retrieveContactDetails(context: Context, contactUri: Uri): ContactModel? {
     val projection = arrayOf(
         ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
@@ -266,28 +250,6 @@ fun retrieveContactDetails(context: Context, contactUri: Uri): ContactModel? {
         }
     }
     return null
-}
-
-fun saveContacts(context: Context, contacts: List<ContactModel>) {
-    val set = contacts.map { "${it.name}|${it.number}" }.toSet()
-    context.getSharedPreferences("sos_prefs", Context.MODE_PRIVATE)
-        .edit {
-            putStringSet("contacts", set)
-        }
-}
-
-fun loadContacts(context: Context): List<ContactModel> {
-    val set = context.getSharedPreferences("sos_prefs", Context.MODE_PRIVATE)
-        .getStringSet("contacts", emptySet()) ?: emptySet()
-
-    return set.mapNotNull { entry ->
-        val parts = entry.split("|")
-        if (parts.size == 2) {
-            ContactModel(parts[0], parts[1])
-        } else {
-            null
-        }
-    }
 }
 
 @Preview(showBackground = true)

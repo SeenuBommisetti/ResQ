@@ -19,6 +19,8 @@ import androidx.core.app.NotificationCompat
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import com.seenubommisetti.resq.R
+import com.seenubommisetti.resq.data.ContactRepository
+import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -26,8 +28,13 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import javax.inject.Inject
 
+@AndroidEntryPoint
 class SosService : Service() {
+
+    @Inject
+    lateinit var repository: ContactRepository
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private lateinit var notificationManager: NotificationManager
@@ -106,8 +113,7 @@ class SosService : Service() {
     }
 
     private fun sendSosMessages(location: Location) {
-        val prefs = getSharedPreferences("sos_prefs", Context.MODE_PRIVATE)
-        val contacts = prefs.getStringSet("contacts", emptySet()) ?: emptySet()
+        val contacts = repository.loadContacts()
         val mapLink = "https://www.google.com/maps/search/?api=1&query=${location.latitude},${location.longitude}"
         val message = "SOS! I need help. My current location is: $mapLink. Sent automatically via ResQ App."
 
@@ -119,15 +125,11 @@ class SosService : Service() {
         }
 
         for (contact in contacts) {
-            val parts = contact.split("|")
-            if (parts.size == 2) {
-                val number = parts[1]
-                try {
-                    smsManager.sendTextMessage(number, null, message, null, null)
-                    Log.d("SOS", "SMS sent to $number")
-                } catch (e: Exception) {
-                    Log.e("SOS", "Failed to send SMS to $number: ${e.message}")
-                }
+            try {
+                smsManager.sendTextMessage(contact.number, null, message, null, null)
+                Log.d("SOS", "SMS sent to ${contact.number}")
+            } catch (e: Exception) {
+                Log.e("SOS", "Failed to send SMS to ${contact.number}: ${e.message}")
             }
         }
     }
